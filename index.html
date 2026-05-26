@@ -684,13 +684,14 @@ function saveCustomExercise(){
 }
 
 // ══ ACTIVE WORKOUT ══
-let wkRoutine=null,wkLog=[],wkElapsed=0,wkTimer=null,restSecs=0,restTotal=90,restTimer=null;
+let wkRoutine=null,wkLog=[],wkElapsed=0,wkTimer=null,restSecs=0,restTotal=90;
 
 function startWorkout(id){
   wkRoutine=state.routines.find(r=>r.id===id);if(!wkRoutine)return;
   wkLog=wkRoutine.exercises.map(e=>{const type=getType(e.id);return{id:e.id,type,sets:e.sets.map(s=>({...s,done:false}))};});
-  wkElapsed=0;restSecs=0;restTotal=state.settings.restTime;
+  wkElapsed=0;restSecs=0;restTotal=state.settings.restTime;restEndTime=null;
   clearInterval(wkTimer);clearInterval(restTimer);
+  requestNotifPermission();
   document.getElementById('workout-title').textContent=wkRoutine.name;
   document.getElementById('rest-bar').classList.remove('visible');
   renderWorkout();updateWkStats();showScreen('workout');
@@ -764,8 +765,84 @@ function tickSet(ei,si){
   if(s.done)startRest();
   else{clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');}
 }
-function updRestBar(){document.getElementById('rest-countdown').textContent=fmt(restSecs);document.getElementById('rest-prog').style.width=`${restSecs/restTotal*100}%`;}
-function startRest(){clearInterval(restTimer);restSecs=restTotal;updRestBar();document.getElementById('rest-bar').classList.add('visible');restTimer=setInterval(()=>{restSecs--;if(restSecs<=0){clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');playBell();}else updRestBar();},1000);}
+// ── REST TIMER — timestamp based (funciona en background) ──
+let restEndTime = null; // timestamp absoluto de cuando termina el descanso
+let restTimer = null;
+let notifScheduled = false;
+
+function requestNotifPermission(){
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+}
+
+function scheduleNotif(secsFromNow){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  // Cancelar notificación previa si hubiera
+  notifScheduled = false;
+  setTimeout(()=>{
+    if(!notifScheduled) return; // fue cancelada (skipRest)
+    new Notification('DEADLIFT 🔔', {
+      body: '¡Tiempo de descanso terminado! A darle.',
+      icon: '', silent: false,
+    });
+    notifScheduled = false;
+  }, secsFromNow * 1000);
+  notifScheduled = true;
+}
+
+function startRest(){
+  clearInterval(restTimer);
+  restEndTime = Date.now() + restTotal * 1000;
+  scheduleNotif(restTotal);
+  updRestBar();
+  document.getElementById('rest-bar').classList.add('visible');
+  restTimer = setInterval(()=>{
+    const remaining = Math.ceil((restEndTime - Date.now()) / 1000);
+    if(remaining <= 0){
+      clearInterval(restTimer);
+      restTimer = null;
+      restEndTime = null;
+      document.getElementById('rest-bar').classList.remove('visible');
+      playBell();
+    } else {
+      restSecs = remaining;
+      updRestBar();
+    }
+  }, 250); // tick cada 250ms para mayor precisión
+}
+
+function updRestBar(){
+  const remaining = restEndTime ? Math.max(0, Math.ceil((restEndTime - Date.now()) / 1000)) : restSecs;
+  document.getElementById('rest-countdown').textContent = fmt(remaining);
+  document.getElementById('rest-prog').style.width = `${Math.max(0, remaining / restTotal * 100)}%`;
+}
+
+function skipRest(){
+  clearInterval(restTimer);
+  restTimer = null;
+  restEndTime = null;
+  notifScheduled = false; // cancelar notificación pendiente
+  document.getElementById('rest-bar').classList.remove('visible');
+}
+
+// Cuando el usuario vuelve a la app — recalcular tiempo restante real
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && restEndTime){
+    const remaining = Math.ceil((restEndTime - Date.now()) / 1000);
+    if(remaining <= 0){
+      // El descanso terminó mientras estaba en background
+      clearInterval(restTimer);
+      restTimer = null;
+      restEndTime = null;
+      document.getElementById('rest-bar').classList.remove('visible');
+      playBell();
+    } else {
+      restSecs = remaining;
+      updRestBar();
+    }
+  }
+});
 // Audio context — se crea y calienta en el primer tap del usuario
 let audioCtx = null;
 
