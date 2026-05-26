@@ -408,7 +408,7 @@ function fmt(s){return`${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).t
 function kcalc(secs,vol,bw){const h=secs/3600;return Math.round(5.5*bw*h*(1+Math.min(vol/5000,2)*0.3))||0;}
 function dateStr(ts){return new Date(ts).toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});}
 function fullDate(ts){return new Date(ts).toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function toast(msg,dur=3500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 function muscleTags(arr){return[...new Set(arr)].map(m=>{const g=MUSCLES[m];return`<span class="muscle-tag" style="background:${g.color}22;color:${g.color};border:1px solid ${g.color}44;">${g.emoji} ${g.label}</span>`;}).join(' ');}
 function typeBadge(t){return`<span class="type-badge">${{weight:'🏋️ Peso+Reps',cardio:'🏃 Tiempo+KM',time:'⏱ Tiempo'}[t]||''}</span>`;}
 function defSet(type){
@@ -805,11 +805,12 @@ function startRest(){
       restEndTime = null;
       document.getElementById('rest-bar').classList.remove('visible');
       playBell();
+      toast('🔔 ¡El descanso ha terminado!');
     } else {
       restSecs = remaining;
       updRestBar();
     }
-  }, 250); // tick cada 250ms para mayor precisión
+  }, 250);
 }
 
 function updRestBar(){
@@ -837,6 +838,7 @@ document.addEventListener('visibilitychange', ()=>{
       restEndTime = null;
       document.getElementById('rest-bar').classList.remove('visible');
       playBell();
+      toast('🔔 ¡El descanso ha terminado!');
     } else {
       restSecs = remaining;
       updRestBar();
