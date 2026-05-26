@@ -758,67 +758,86 @@ function wkSetRow(ei,si,s,type,gc){
 function setRT(t){restTotal=t;renderWorkout();}
 function updWkSet(ei,si,f,v){wkLog[ei].sets[si][f]=parseFloat(v)||0;updateWkStats();}
 function updWkTime(ei,si,mm,ss){const c=wkLog[ei].sets[si].totalSecs||0;const cm=Math.floor(c/60),cs=c%60;wkLog[ei].sets[si].totalSecs=(mm!==null?parseInt(mm)||0:cm)*60+(ss!==null?parseInt(ss)||0:cs);updateWkStats();}
-function tickSet(ei,si){const s=wkLog[ei].sets[si];s.done=!s.done;renderWorkout();updateWkStats();if(s.done)startRest();else{clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');}}
+function tickSet(ei,si){
+  initAudio(); // calentar contexto de audio en el tap del usuario
+  const s=wkLog[ei].sets[si];s.done=!s.done;renderWorkout();updateWkStats();
+  if(s.done)startRest();
+  else{clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');}
+}
 function updRestBar(){document.getElementById('rest-countdown').textContent=fmt(restSecs);document.getElementById('rest-prog').style.width=`${restSecs/restTotal*100}%`;}
 function startRest(){clearInterval(restTimer);restSecs=restTotal;updRestBar();document.getElementById('rest-bar').classList.add('visible');restTimer=setInterval(()=>{restSecs--;if(restSecs<=0){clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');playBell();}else updRestBar();},1000);}
+// Audio context — se crea y calienta en el primer tap del usuario
+let audioCtx = null;
+
+function initAudio(){
+  if(audioCtx && audioCtx.state !== 'closed') {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    return;
+  }
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Reproducir silencio para "desbloquear" el contexto en iOS
+    const buf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+  } catch(e) { console.warn('Audio init error:', e); }
+}
+
 function playBell(){
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const t = ctx.currentTime;
+    if(!audioCtx || audioCtx.state === 'closed'){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if(audioCtx.state === 'suspended') audioCtx.resume();
 
-    // Campana de ring: múltiples parciales que suenan juntos
+    const t = audioCtx.currentTime;
+
     const partials = [
       { freq: 440,  gain: 0.6,  decay: 2.2 },
       { freq: 880,  gain: 0.4,  decay: 1.8 },
       { freq: 1320, gain: 0.25, decay: 1.4 },
       { freq: 1760, gain: 0.15, decay: 1.0 },
       { freq: 2200, gain: 0.08, decay: 0.7 },
-      { freq: 587,  gain: 0.3,  decay: 2.0 },  // armónico extra — cuerpo
-      { freq: 293,  gain: 0.2,  decay: 2.5 },  // sub — profundidad
+      { freq: 587,  gain: 0.3,  decay: 2.0 },
+      { freq: 293,  gain: 0.2,  decay: 2.5 },
     ];
 
     partials.forEach(({ freq, gain, decay }) => {
-      const osc = ctx.createOscillator();
-      const env = ctx.createGain();
-
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, t);
-      // Leve pitch drop al inicio — realismo
       osc.frequency.exponentialRampToValueAtTime(freq * 0.98, t + 0.05);
-
       env.gain.setValueAtTime(0, t);
-      env.gain.linearRampToValueAtTime(gain, t + 0.005); // ataque instantáneo
-      env.gain.exponentialRampToValueAtTime(0.0001, t + decay); // decay largo
-
+      env.gain.linearRampToValueAtTime(gain, t + 0.005);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + decay);
       osc.connect(env);
-      env.connect(ctx.destination);
+      env.connect(audioCtx.destination);
       osc.start(t);
       osc.stop(t + decay);
     });
 
-    // Golpe inicial — transiente percusivo
-    const bufSize = ctx.sampleRate * 0.05;
-    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
-    const noise = ctx.createBufferSource();
-    const noiseEnv = ctx.createGain();
-    const noiseFilter = ctx.createBiquadFilter();
+    // Transiente percusivo
+    const bufSize = audioCtx.sampleRate * 0.05;
+    const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for(let i = 0; i < bufSize; i++) data[i] = (Math.random()*2-1)*(1-i/bufSize);
+    const noise = audioCtx.createBufferSource();
+    const noiseEnv = audioCtx.createGain();
+    const noiseFilter = audioCtx.createBiquadFilter();
     noiseFilter.type = 'bandpass';
     noiseFilter.frequency.value = 800;
     noiseFilter.Q.value = 0.8;
-    noise.buffer = buf;
+    noise.buffer = noiseBuf;
     noiseEnv.gain.setValueAtTime(0.3, t);
     noiseEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
     noise.connect(noiseFilter);
     noiseFilter.connect(noiseEnv);
-    noiseEnv.connect(ctx.destination);
+    noiseEnv.connect(audioCtx.destination);
     noise.start(t);
-
-    setTimeout(() => ctx.close(), 4000);
-  } catch(e) {
-    console.warn('Audio error:', e);
-  }
+  } catch(e) { console.warn('Bell error:', e); }
 }
 function skipRest(){clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');}
 
