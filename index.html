@@ -82,6 +82,14 @@
   .type-sel button.active{background:#1a1a36;border-color:var(--accent);color:var(--accent);}
   .col-label{color:var(--muted);font-size:10px;text-align:center;font-weight:700;}
   .set-grid{display:grid;gap:8px;margin-bottom:8px;align-items:center;}
+  .effort-box{margin-top:14px;padding:14px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--border);}
+  .effort-kicker{color:#ff7d86;font-size:11px;font-weight:900;letter-spacing:1px;margin-bottom:8px;}
+  .effort-title{font-weight:800;font-size:14px;line-height:1.35;margin-bottom:12px;color:var(--text);}
+  .effort-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .effort-btn{border:2px solid transparent;border-radius:14px;padding:12px 6px;color:#fff;font-size:15px;font-weight:900;font-family:'DM Sans',sans-serif;cursor:pointer;transition:transform .1s,filter .1s,box-shadow .15s;}
+  .effort-btn:active{transform:scale(.97);}
+  .effort-btn.selected{box-shadow:0 0 0 2px #fff4 inset,0 0 22px currentColor;filter:brightness(1.12);}
+  .effort-badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:900;border:1px solid transparent;margin-top:10px;}
 </style>
 </head>
 <body>
@@ -405,6 +413,11 @@ function persist(){localStorage.setItem(STORE,JSON.stringify(state));}
 function allEx(){return[...DB_BUILTIN,...(state.customExercises||[])];}
 function getEx(id){return allEx().find(e=>e.id===id);}
 function getType(id){const e=getEx(id);if(e&&e.trackType)return e.trackType;return BUILTIN_TYPES[id]||'weight';}
+const EFFORT_FEEDBACK={
+  more3:{label:'3+',text:'Podía hacer 3 o más reps',color:'var(--green)'},
+  more1_2:{label:'1-2',text:'Podía hacer 1 o 2 reps',color:'#e6b93a'},
+  zero:{label:'0',text:'Llegué al límite',color:'var(--red)'}
+};
 
 // ══ UTILS ══
 function uid(){return'c'+Math.random().toString(36).substr(2,9);}
@@ -415,6 +428,18 @@ function fullDate(ts){return new Date(ts).toLocaleDateString('es-AR',{weekday:'l
 function toast(msg,dur=3500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 function muscleTags(arr){return[...new Set(arr)].map(m=>{const g=MUSCLES[m];return`<span class="muscle-tag" style="background:${g.color}22;color:${g.color};border:1px solid ${g.color}44;">${g.emoji} ${g.label}</span>`;}).join(' ');}
 function typeBadge(t){return`<span class="type-badge">${{weight:'🏋️ Peso+Reps',cardio:'🏃 Tiempo+KM',time:'⏱ Tiempo'}[t]||''}</span>`;}
+function exerciseCompleted(ex){return ex.sets.length>0&&ex.sets.every(s=>s.done);}
+function effortBadge(value){const e=EFFORT_FEEDBACK[value];if(!e)return'';return`<span class="effort-badge" style="background:${e.color}22;color:${e.color};border-color:${e.color}66;">ESFUERZO · ${e.label} <span style="color:var(--muted);font-weight:700;">${e.text}</span></span>`;}
+function effortPanel(ei,ex){
+  const d=getEx(ex.id);const last=[...ex.sets].reverse().find(s=>s.done)||ex.sets[ex.sets.length-1];
+  const detail=ex.type==='weight'?`serie ${ex.sets.length} · ${last.reps||0} × ${last.weight||0}kg`:ex.type==='cardio'?`serie ${ex.sets.length} · ${fmt(last.totalSecs||0)} · ${last.km||0}km`:`serie ${ex.sets.length} · ${fmt(last.totalSecs||0)}`;
+  return`<div class="effort-box slide-up">
+    <div class="effort-kicker">ESFUERZO</div>
+    <div class="effort-title">¿Cuántas repeticiones más podrías haber hecho en ${d?.name||'este ejercicio'}?<br><span style="color:var(--muted);font-weight:700;">${detail}</span></div>
+    <div class="effort-actions">${Object.entries(EFFORT_FEEDBACK).map(([key,opt])=>`<button class="effort-btn ${ex.effortFeedback===key?'selected':''}" onclick="selectEffort(${ei},'${key}')" style="background:${opt.color};">${opt.label}</button>`).join('')}</div>
+  </div>`;
+}
+function selectEffort(ei,value){wkLog[ei].effortFeedback=value;renderWorkout();updateWkStats();}
 function defSet(type){
   if(type==='cardio')return{totalSecs:600,km:1,done:false};
   if(type==='time')return{totalSecs:60,done:false};
@@ -512,6 +537,7 @@ function showSessionDetail(id){
           if(type==='time')return`<div style="display:flex;gap:10px;margin-bottom:5px;"><span style="color:var(--muted);font-size:12px;width:50px;">Serie ${i+1}</span><span style="color:var(--accent);font-weight:700;font-size:13px;">${fmt(set.totalSecs||0)}</span></div>`;
           return`<div style="display:flex;gap:10px;margin-bottom:5px;"><span style="color:var(--muted);font-size:12px;width:50px;">Serie ${i+1}</span><span style="color:var(--accent);font-weight:700;font-size:13px;">${set.reps} reps</span><span style="color:var(--muted);">×</span><span style="color:var(--text);font-weight:700;font-size:13px;">${set.weight} kg</span></div>`;
         }).join('')}
+        ${effortBadge(ex.effortFeedback)}
       </div>`;
     }).join('')}`;
   showScreen('session-detail');
@@ -692,7 +718,7 @@ let wkRoutine=null,wkLog=[],wkElapsed=0,wkTimer=null,restSecs=0,restTotal=90;
 
 function startWorkout(id){
   wkRoutine=state.routines.find(r=>r.id===id);if(!wkRoutine)return;
-  wkLog=wkRoutine.exercises.map(e=>{const type=getType(e.id);return{id:e.id,type,sets:e.sets.map(s=>({...s,done:false}))};});
+  wkLog=wkRoutine.exercises.map(e=>{const type=getType(e.id);return{id:e.id,type,effortFeedback:null,sets:e.sets.map(s=>({...s,done:false}))};});
   wkElapsed=0;restSecs=0;restTotal=state.settings.restTime;restEndTime=null;
   clearInterval(wkTimer);clearInterval(restTimer);
   requestNotifPermission();
@@ -734,6 +760,7 @@ function renderWorkout(){
       </div>
       <div class="set-grid" style="grid-template-columns:${type==='cardio'?'28px 3fr 2fr 44px':gc};margin-bottom:6px;"><span class="col-label">SERIE</span>${hdr}<span class="col-label">✓</span></div>
       ${ex.sets.map((s,si)=>wkSetRow(ei,si,s,type,gc)).join('')}
+      ${exerciseCompleted(ex)&&!ex.effortFeedback?effortPanel(ei,ex):''}
     </div>`;
   }).join('')+`<div class="card" style="margin-bottom:30px;">
     <div style="color:var(--muted);font-size:12px;font-weight:700;margin-bottom:10px;">⏱ TIEMPO DE DESCANSO</div>
@@ -765,7 +792,9 @@ function updWkSet(ei,si,f,v){wkLog[ei].sets[si][f]=parseFloat(v)||0;updateWkStat
 function updWkTime(ei,si,mm,ss){const c=wkLog[ei].sets[si].totalSecs||0;const cm=Math.floor(c/60),cs=c%60;wkLog[ei].sets[si].totalSecs=(mm!==null?parseInt(mm)||0:cm)*60+(ss!==null?parseInt(ss)||0:cs);updateWkStats();}
 function tickSet(ei,si){
   initAudio(); // calentar contexto de audio en el tap del usuario
-  const s=wkLog[ei].sets[si];s.done=!s.done;renderWorkout();updateWkStats();
+  const s=wkLog[ei].sets[si];s.done=!s.done;
+  if(!exerciseCompleted(wkLog[ei]))wkLog[ei].effortFeedback=null;
+  renderWorkout();updateWkStats();
   if(s.done)startRest();
   else{clearInterval(restTimer);document.getElementById('rest-bar').classList.remove('visible');}
 }
@@ -942,7 +971,7 @@ function finishWorkout(){
   document.getElementById('rest-bar').classList.remove('visible');
   const vol=wkLog.filter(ex=>ex.type==='weight').flatMap(ex=>ex.sets.filter(s=>s.done)).reduce((a,s)=>a+(s.reps||0)*(s.weight||0),0);
   const session={id:uid(),routineId:wkRoutine.id,routineName:wkRoutine.name,date:Date.now(),duration:wkElapsed,calories:kcalc(wkElapsed,vol,state.settings.bodyWeight),totalVolume:vol,
-    exercises:wkLog.map(ex=>{const d=getEx(ex.id);return{id:ex.id,name:d?.name||ex.id,muscle:d?.muscle||'cardio',trackType:ex.type,sets:ex.sets.filter(s=>s.done).map(s=>({...s}))};}).filter(ex=>ex.sets.length>0)};
+    exercises:wkLog.map(ex=>{const d=getEx(ex.id);return{id:ex.id,name:d?.name||ex.id,muscle:d?.muscle||'cardio',trackType:ex.type,effortFeedback:ex.effortFeedback||null,sets:ex.sets.filter(s=>s.done).map(s=>({...s}))};}).filter(ex=>ex.sets.length>0)};
   state.sessions.push(session);persist();
   showScreen(currentTab);document.getElementById('bottom-nav').style.display='flex';
   renderHome();showSummary(session);
