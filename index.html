@@ -196,12 +196,16 @@
       <div style="color:var(--muted);font-size:11px;margin-top:5px;" id="wk-sets-label">0/0 series</div>
     </div>
     <div id="rest-bar">
-      <div>
-        <div style="color:var(--muted);font-size:10px;font-weight:700;letter-spacing:1px;">DESCANSO</div>
-        <div id="rest-countdown">01:30</div>
+      <div style="display:flex;align-items:center;gap:0;flex:1;">
+        <div>
+          <div style="color:var(--muted);font-size:10px;font-weight:700;letter-spacing:1px;">DESCANSO</div>
+        </div>
+        <button onclick="adjustRest(-15)" style="background:none;border:none;color:var(--accent);font-weight:800;font-size:14px;cursor:pointer;padding:6px 10px;font-family:'DM Sans',sans-serif;">-15s</button>
+        <div id="rest-countdown" style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--accent);line-height:1;min-width:72px;text-align:center;"></div>
+        <button onclick="adjustRest(15)" style="background:none;border:none;color:var(--accent);font-weight:800;font-size:14px;cursor:pointer;padding:6px 10px;font-family:'DM Sans',sans-serif;">+15s</button>
+        <div class="rest-prog-track" style="margin-left:6px;"><div class="rest-prog-fill" id="rest-prog" style="width:100%"></div></div>
       </div>
-      <div class="rest-prog-track"><div class="rest-prog-fill" id="rest-prog" style="width:100%"></div></div>
-      <button class="btn-secondary" style="font-size:12px;padding:8px 12px;" onclick="skipRest()">Saltar</button>
+      <button class="btn-secondary" style="font-size:12px;padding:8px 12px;flex-shrink:0;" onclick="skipRest()">Saltar</button>
     </div>
     <div class="scroll" style="padding:16px;" id="workout-body"></div>
   </div>
@@ -819,11 +823,21 @@ function updRestBar(){
   document.getElementById('rest-prog').style.width = `${Math.max(0, remaining / restTotal * 100)}%`;
 }
 
+function adjustRest(secs){
+  if(!restEndTime) return;
+  // Mínimo 1 segundo restante al restar
+  restEndTime = Math.max(Date.now() + 1000, restEndTime + secs * 1000);
+  // Si sumamos y el nuevo total supera restTotal, actualizarlo para la barra
+  const remaining = Math.ceil((restEndTime - Date.now()) / 1000);
+  if(remaining > restTotal) restTotal = remaining;
+  updRestBar();
+}
+
 function skipRest(){
   clearInterval(restTimer);
   restTimer = null;
   restEndTime = null;
-  notifScheduled = false; // cancelar notificación pendiente
+  notifScheduled = false;
   document.getElementById('rest-bar').classList.remove('visible');
 }
 
