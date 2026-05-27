@@ -773,6 +773,7 @@ function tickSet(ei,si){
 let restEndTime = null; // timestamp absoluto de cuando termina el descanso
 let restTimer = null;
 let notifScheduled = false;
+let notifTimeout = null;
 
 function requestNotifPermission(){
   if('Notification' in window && Notification.permission === 'default'){
@@ -782,17 +783,18 @@ function requestNotifPermission(){
 
 function scheduleNotif(secsFromNow){
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
-  // Cancelar notificación previa si hubiera
-  notifScheduled = false;
-  setTimeout(()=>{
-    if(!notifScheduled) return; // fue cancelada (skipRest)
+  // Cancelar timeout anterior correctamente
+  if(notifTimeout){ clearTimeout(notifTimeout); notifTimeout = null; }
+  notifScheduled = true;
+  notifTimeout = setTimeout(()=>{
+    if(!notifScheduled) return;
     new Notification('DEADLIFT 🔔', {
       body: '¡Tiempo de descanso terminado! A darle.',
       icon: '', silent: false,
     });
     notifScheduled = false;
+    notifTimeout = null;
   }, secsFromNow * 1000);
-  notifScheduled = true;
 }
 
 function startRest(){
@@ -825,11 +827,11 @@ function updRestBar(){
 
 function adjustRest(secs){
   if(!restEndTime) return;
-  // Mínimo 1 segundo restante al restar
   restEndTime = Math.max(Date.now() + 1000, restEndTime + secs * 1000);
-  // Si sumamos y el nuevo total supera restTotal, actualizarlo para la barra
   const remaining = Math.ceil((restEndTime - Date.now()) / 1000);
   if(remaining > restTotal) restTotal = remaining;
+  // Reprogramar notificación con el nuevo tiempo
+  scheduleNotif(remaining);
   updRestBar();
 }
 
@@ -838,6 +840,7 @@ function skipRest(){
   restTimer = null;
   restEndTime = null;
   notifScheduled = false;
+  if(notifTimeout){ clearTimeout(notifTimeout); notifTimeout = null; }
   document.getElementById('rest-bar').classList.remove('visible');
 }
 
