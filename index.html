@@ -413,11 +413,17 @@ function persist(){localStorage.setItem(STORE,JSON.stringify(state));}
 function allEx(){return[...DB_BUILTIN,...(state.customExercises||[])];}
 function getEx(id){return allEx().find(e=>e.id===id);}
 function getType(id){const e=getEx(id);if(e&&e.trackType)return e.trackType;return BUILTIN_TYPES[id]||'weight';}
-const EFFORT_FEEDBACK={
+const WEIGHT_EFFORT_FEEDBACK={
   more3:{label:'3+',text:'Podía hacer 3 o más reps',color:'var(--green)'},
   more1_2:{label:'1-2',text:'Podía hacer 1 o 2 reps',color:'#e6b93a'},
   zero:{label:'0',text:'Llegué al límite',color:'var(--red)'}
 };
+const ENDURANCE_EFFORT_FEEDBACK={
+  easy:{label:'Fácil',text:'Se sintió fácil',color:'var(--green)'},
+  fair:{label:'Justo',text:'Esfuerzo justo',color:'#e6b93a'},
+  limit:{label:'Al límite',text:'Llegué al límite',color:'var(--red)'}
+};
+function effortOptions(type){return type==='weight'?WEIGHT_EFFORT_FEEDBACK:ENDURANCE_EFFORT_FEEDBACK;}
 
 // ══ UTILS ══
 function uid(){return'c'+Math.random().toString(36).substr(2,9);}
@@ -429,14 +435,16 @@ function toast(msg,dur=3500){const t=document.getElementById('toast');t.textCont
 function muscleTags(arr){return[...new Set(arr)].map(m=>{const g=MUSCLES[m];return`<span class="muscle-tag" style="background:${g.color}22;color:${g.color};border:1px solid ${g.color}44;">${g.emoji} ${g.label}</span>`;}).join(' ');}
 function typeBadge(t){return`<span class="type-badge">${{weight:'🏋️ Peso+Reps',cardio:'🏃 Tiempo+KM',time:'⏱ Tiempo'}[t]||''}</span>`;}
 function exerciseCompleted(ex){return ex.sets.length>0&&ex.sets.every(s=>s.done);}
-function effortBadge(value){const e=EFFORT_FEEDBACK[value];if(!e)return'';return`<span class="effort-badge" style="background:${e.color}22;color:${e.color};border-color:${e.color}66;">ESFUERZO · ${e.label} <span style="color:var(--muted);font-weight:700;">${e.text}</span></span>`;}
+function effortBadge(value,type='weight'){const e=effortOptions(type)[value];if(!e)return'';return`<span class="effort-badge" style="background:${e.color}22;color:${e.color};border-color:${e.color}66;">ESFUERZO · ${e.label} <span style="color:var(--muted);font-weight:700;">${e.text}</span></span>`;}
 function effortPanel(ei,ex){
   const d=getEx(ex.id);const last=[...ex.sets].reverse().find(s=>s.done)||ex.sets[ex.sets.length-1];
   const detail=ex.type==='weight'?`serie ${ex.sets.length} · ${last.reps||0} × ${last.weight||0}kg`:ex.type==='cardio'?`serie ${ex.sets.length} · ${fmt(last.totalSecs||0)} · ${last.km||0}km`:`serie ${ex.sets.length} · ${fmt(last.totalSecs||0)}`;
+  const title=ex.type==='weight'?`¿Cuántas repeticiones más podrías haber hecho en ${d?.name||'este ejercicio'}?`:`¿Cómo se sintió este esfuerzo?`;
+  const options=effortOptions(ex.type);
   return`<div class="effort-box slide-up">
     <div class="effort-kicker">ESFUERZO</div>
-    <div class="effort-title">¿Cuántas repeticiones más podrías haber hecho en ${d?.name||'este ejercicio'}?<br><span style="color:var(--muted);font-weight:700;">${detail}</span></div>
-    <div class="effort-actions">${Object.entries(EFFORT_FEEDBACK).map(([key,opt])=>`<button class="effort-btn ${ex.effortFeedback===key?'selected':''}" onclick="selectEffort(${ei},'${key}')" style="background:${opt.color};">${opt.label}</button>`).join('')}</div>
+    <div class="effort-title">${title}<br><span style="color:var(--muted);font-weight:700;">${detail}</span></div>
+    <div class="effort-actions">${Object.entries(options).map(([key,opt])=>`<button class="effort-btn ${ex.effortFeedback===key?'selected':''}" onclick="selectEffort(${ei},'${key}')" style="background:${opt.color};">${opt.label}</button>`).join('')}</div>
   </div>`;
 }
 function selectEffort(ei,value){wkLog[ei].effortFeedback=value;renderWorkout();updateWkStats();}
@@ -537,7 +545,7 @@ function showSessionDetail(id){
           if(type==='time')return`<div style="display:flex;gap:10px;margin-bottom:5px;"><span style="color:var(--muted);font-size:12px;width:50px;">Serie ${i+1}</span><span style="color:var(--accent);font-weight:700;font-size:13px;">${fmt(set.totalSecs||0)}</span></div>`;
           return`<div style="display:flex;gap:10px;margin-bottom:5px;"><span style="color:var(--muted);font-size:12px;width:50px;">Serie ${i+1}</span><span style="color:var(--accent);font-weight:700;font-size:13px;">${set.reps} reps</span><span style="color:var(--muted);">×</span><span style="color:var(--text);font-weight:700;font-size:13px;">${set.weight} kg</span></div>`;
         }).join('')}
-        ${effortBadge(ex.effortFeedback)}
+        ${effortBadge(ex.effortFeedback,type)}
       </div>`;
     }).join('')}`;
   showScreen('session-detail');
